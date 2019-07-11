@@ -1,12 +1,29 @@
-use actix_web::client::Client;
-use actix_web::{web, App, Error, HttpResponse, HttpServer};
-use futures::future::Future;
+use actix_web::{guard, web, App, HttpServer};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct User {
+    username: String,
+}
 
 fn main() {
     HttpServer::new(|| {
-        App::new()
-            .data(Client::new())
-            .route("/", web::to_async(handler))
+        App::new().service(
+web::resource("/")
+    .route(
+        web::post()
+            .guard(guard::Header(
+                "content-type",
+                "application/x-www-form-urlencoded",
+            ))
+            .to(form_handler),
+    )
+    .route(
+        web::post()
+            .guard(guard::Header("content-type", "application/json"))
+            .to(json_handler),
+    ),
+        )
     })
     .bind("127.0.0.1:8000")
     .expect("Cannot bind to port 8000")
@@ -14,11 +31,14 @@ fn main() {
     .expect("Unable to run server");
 }
 
-fn handler(client: web::Data<Client>) -> impl Future<Item = HttpResponse, Error = Error> {
-    client.get("https://gensho.ftp.acc.umu.se/debian-cd/current/amd64/iso-cd/debian-10.0.0-amd64-netinst.iso")
-        .send()
-        .map_err(Error::from)
-        .and_then(|res| {
-            HttpResponse::build(res.status()).streaming(res)
-        })
+fn form_handler(user: web::Form<User>) -> String {
+    handler(user.into_inner())
+}
+
+fn json_handler(user: web::Json<User>) -> String {
+    handler(user.into_inner())
+}
+
+fn handler(user: User) -> String {
+    format!("Got username: {}", user.username)
 }
